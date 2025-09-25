@@ -1,11 +1,6 @@
 import express from "express";
 import cors from "cors";
 import bodyParser from "body-parser";
-import path from "path";
-import { fileURLToPath } from "url";
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 
 const app = express();
 app.use(cors());
@@ -16,7 +11,8 @@ let selected = [];
 
 app.get("/items", (req, res) => {
   let { offset = 0, limit = 20, search = "" } = req.query;
-  offset = parseInt(offset); limit = parseInt(limit);
+  offset = parseInt(offset);
+  limit = parseInt(limit);
   let filtered = items;
   if (search) filtered = filtered.filter(el => el.id.toString().includes(search));
   filtered.sort((a, b) => a.id - b.id);
@@ -56,8 +52,9 @@ app.post("/reorder", (req, res) => {
 
 app.post("/add", (req, res) => {
   const { id } = req.body;
-  if (items.some(el => el.id === id) || selected.some(el => el.id === id))
+  if (items.some(el => el.id === id) || selected.some(el => el.id === id)) {
     return res.status(400).json({ message: "Элемент с таким ID уже существует" });
+  }
   const newItem = { id };
   const insertIndex = items.findIndex(el => el.id > id);
   if (insertIndex === -1) items.push(newItem);
@@ -65,11 +62,4 @@ app.post("/add", (req, res) => {
   res.json(newItem);
 });
 
-// Раздача фронтенда
-app.use(express.static(path.join(__dirname, "../frontend/build")));
-app.get("*", (req, res) => {
-  res.sendFile(path.join(__dirname, "../frontend/build/index.html"));
-});
-
-const PORT = process.env.PORT || 4000;
-app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+app.listen(4000, () => console.log("Backend запущен на http://localhost:4000"));
