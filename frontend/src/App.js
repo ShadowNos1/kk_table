@@ -73,15 +73,24 @@ export default function App() {
   };
 
   const handleAdd = async () => {
-    const id = parseInt(prompt("Введите ID нового элемента:"));
-    if (!id) return;
-    try {
-      await axios.post(`${API_BASE}/api/add`, { id });
-      setAllItems([id, ...allItems]);
-    } catch (err) {
-      console.error(err);
-    }
-  };
+  const id = parseInt(prompt("Введите ID нового элемента:"));
+  if (!id) return;
+
+  // Проверка, есть ли уже такой элемент
+  if (allItems.includes(id) || selectedItems.includes(id)) {
+    alert("Элемент с таким ID уже существует");
+    return;
+  }
+
+  try {
+    await axios.post("http://localhost:4000/api/add", { id });
+    setAllItems([id, ...allItems]); // Добавляем в начало списка
+  } catch (err) {
+    console.error(err);
+    alert("Ошибка при добавлении элемента");
+  }
+};
+
 
   const handleReset = () => {
     setFilter("");
