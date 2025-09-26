@@ -1,74 +1,77 @@
 import express from "express";
-import bodyParser from "body-parser";
 import cors from "cors";
-import path from "path";
-import { fileURLToPath } from "url";
+import bodyParser from "body-parser";
 
 const app = express();
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+const PORT = 4000;
 
 app.use(cors());
 app.use(bodyParser.json());
 
-// "База данных" в памяти
-let allItems = Array.from({ length: 1000 }, (_, i) => i + 1);
-let selectedItems = [];
+const TOTAL_ITEMS = 1_000_000; // миллион элементов
+let selectedItems = []; // массив выбранных id
 
-// API для всех элементов
+// функция для генерации элемента по id
+const createItem = (id) => ({ id });
+
+// Получение всех элементов с фильтром и пагинацией
 app.get("/api/items", (req, res) => {
-  const { filter = "", offset = 0, limit = 20 } = req.query;
-  const data = allItems
-    .filter((i) => i.toString().includes(filter))
-    .slice(Number(offset), Number(offset) + Number(limit));
-  res.json(data);
+  const filter = req.query.filter || "";
+  const offset = parseInt(req.query.offset) || 0;
+  const limit = parseInt(req.query.limit) || 20;
+
+  let items = [];
+  let count = 0;
+  let id = 1;
+
+  // формируем только нужный диапазон с учётом фильтра
+  while (items.length < limit && id <= TOTAL_ITEMS) {
+    if (!selectedItems.includes(id) && id.toString().includes(filter)) {
+      if (count >= offset) items.push(createItem(id));
+      count++;
+    }
+    id++;
+  }
+
+  res.json(items);
 });
 
-// API для выбранных элементов
+// Получение выбранных элементов
 app.get("/api/selected", (req, res) => {
-  const { filter = "", offset = 0, limit = 20 } = req.query;
-  const data = selectedItems
-    .filter((i) => i.toString().includes(filter))
-    .slice(Number(offset), Number(offset) + Number(limit));
-  res.json(data);
+  const filter = req.query.filter || "";
+  const offset = parseInt(req.query.offset) || 0;
+  const limit = parseInt(req.query.limit) || 20;
+
+  const filtered = selectedItems
+    .filter((id) => id.toString().includes(filter))
+    .slice(offset, offset + limit)
+    .map(createItem);
+
+  res.json(filtered);
 });
 
 // Выбор элемента
 app.post("/api/select", (req, res) => {
   const { id } = req.body;
-  const index = allItems.indexOf(id);
-  if (index !== -1) {
-    allItems.splice(index, 1);
-    selectedItems.unshift(id);
-  }
+  if (!selectedItems.includes(id)) selectedItems.push(id);
   res.json({ success: true });
 });
 
-// Снятие выбора
+// Убрать элемент из выбранных
 app.post("/api/unselect", (req, res) => {
   const { id } = req.body;
-  const index = selectedItems.indexOf(id);
-  if (index !== -1) {
-    selectedItems.splice(index, 1);
-    allItems.unshift(id);
-  }
+  selectedItems = selectedItems.filter((i) => i !== id);
   res.json({ success: true });
 });
 
-// Добавление элемента
+// Добавление нового элемента
 app.post("/api/add", (req, res) => {
   const { id } = req.body;
-  if (!allItems.includes(id) && !selectedItems.includes(id)) {
-    allItems.unshift(id);
-  }
+  // новый элемент не добавляем в selected
+  // ничего не делаем, т.к. все элементы вычисляются виртуально
   res.json({ success: true });
 });
 
-// Отдаём фронтенд
-app.use(express.static(path.join(__dirname, "../frontend/build")));
-app.get("*", (req, res) => {
-  res.sendFile(path.join(__dirname, "../frontend/build/index.html"));
+app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
 });
-
-const PORT = process.env.PORT || 4000;
-app.listen(PORT);
