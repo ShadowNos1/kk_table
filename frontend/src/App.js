@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useRef } from "react";
 import axios from "axios";
 import { DragDropContext, Droppable, Draggable } from "react-beautiful-dnd";
-import "./App.css";
+import './App.css';
 
 const PAGE_SIZE = 20;
+const API_BASE = process.env.REACT_APP_API_URL || "";
 
 export default function App() {
   const [allItems, setAllItems] = useState([]);
@@ -19,51 +20,82 @@ export default function App() {
     if (loaderAll.current) return;
     loaderAll.current = true;
     const offset = reset ? 0 : allOffset;
-    const res = await axios.get("http://localhost:4000/api/items", {
-      params: { filter, offset, limit: PAGE_SIZE },
-    });
-    setAllItems((prev) => (reset ? res.data : [...prev, ...res.data]));
-    setAllOffset(reset ? PAGE_SIZE : allOffset + PAGE_SIZE);
-    loaderAll.current = false;
+    try {
+      const res = await axios.get(`${API_BASE}/api/items`, {
+        params: { filter, offset, limit: PAGE_SIZE },
+      });
+      setAllItems((prev) => (reset ? res.data : [...prev, ...res.data]));
+      setAllOffset(reset ? PAGE_SIZE : allOffset + PAGE_SIZE);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      loaderAll.current = false;
+    }
   };
 
   const fetchSelected = async (reset = false) => {
     if (loaderSelected.current) return;
     loaderSelected.current = true;
     const offset = reset ? 0 : selectedOffset;
-    const res = await axios.get("http://localhost:4000/api/selected", {
-      params: { filter: selectedFilter, offset, limit: PAGE_SIZE },
-    });
-    setSelectedItems((prev) => (reset ? res.data : [...prev, ...res.data]));
-    setSelectedOffset(reset ? PAGE_SIZE : selectedOffset + PAGE_SIZE);
-    loaderSelected.current = false;
+    try {
+      const res = await axios.get(`${API_BASE}/api/selected`, {
+        params: { filter: selectedFilter, offset, limit: PAGE_SIZE },
+      });
+      setSelectedItems((prev) => (reset ? res.data : [...prev, ...res.data]));
+      setSelectedOffset(reset ? PAGE_SIZE : selectedOffset + PAGE_SIZE);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      loaderSelected.current = false;
+    }
   };
 
   useEffect(() => { fetchItems(true); }, [filter]);
   useEffect(() => { fetchSelected(true); }, [selectedFilter]);
 
   const handleSelect = async (id) => {
-    await axios.post("http://localhost:4000/api/select", { id });
-    setAllItems(allItems.filter((i) => i !== id));
-    setSelectedItems([id, ...selectedItems]);
+    try {
+      await axios.post(`${API_BASE}/api/select`, { id });
+      setAllItems(allItems.filter((i) => i !== id));
+      setSelectedItems([id, ...selectedItems]);
+    } catch (err) {
+      console.error(err);
+    }
   };
 
   const handleUnselect = async (id) => {
-    await axios.post("http://localhost:4000/api/unselect", { id });
-    setSelectedItems(selectedItems.filter((i) => i !== id));
-    setAllItems([id, ...allItems]);
+    try {
+      await axios.post(`${API_BASE}/api/unselect`, { id });
+      setSelectedItems(selectedItems.filter((i) => i !== id));
+      setAllItems([id, ...allItems]);
+    } catch (err) {
+      console.error(err);
+    }
   };
 
   const handleAdd = async () => {
-    const id = parseInt(prompt("Введите ID нового элемента:"));
-    if (!id) return;
+  const id = parseInt(prompt("Введите ID нового элемента:"));
+  if (!id) return;
+
+  // Проверка, есть ли уже такой элемент
+  if (allItems.includes(id) || selectedItems.includes(id)) {
+    alert("Элемент с таким ID уже существует");
+    return;
+  }
+
+  try {
     await axios.post("http://localhost:4000/api/add", { id });
-    setAllItems([id, ...allItems]);
-  };
+    setAllItems([id, ...allItems]); // Добавляем в начало списка
+  } catch (err) {
+    console.error(err);
+    alert("Ошибка при добавлении элемента");
+  }
+};
+
 
   const handleReset = () => {
-    fetchItems(true);
     setFilter("");
+    fetchItems(true);
   };
 
   const onDragEnd = (result) => {
@@ -87,39 +119,45 @@ export default function App() {
   };
 
   return (
-    <div className="app-container">
-      {/* Левая панель */}
-      <div className="panel">
+    <div style={{ display: "flex", gap: 20, padding: 20 }}>
+      <div style={{ flex: 1 }}>
         <h3>Все элементы</h3>
-        <div className="button-container">
+        <div style={{ display: "flex", gap: 10, marginBottom: 10 }}>
           <input
-            className="input"
             placeholder="Фильтр"
             value={filter}
             onChange={(e) => setFilter(e.target.value)}
           />
-          <button className="button" onClick={handleAdd}>Добавить</button>
-          <button className="button button-secondary" onClick={handleReset}>Сбросить</button>
+          <button onClick={handleAdd}>Добавить</button>
+          <button onClick={handleReset}>Сбросить список</button>
         </div>
-        <div className="list" onScroll={handleScrollAll}>
+        <div
+          style={{ height: "500px", overflow: "auto", border: "1px solid black" }}
+          onScroll={handleScrollAll}
+        >
           {allItems.map((id) => (
-            <div key={id} className="list-item" onClick={() => handleSelect(id)}>
+            <div
+              key={id}
+              style={{ padding: 10, borderBottom: "1px solid #ccc", cursor: "pointer" }}
+              onClick={() => handleSelect(id)}
+            >
               {id}
             </div>
           ))}
         </div>
       </div>
 
-      {/* Правая панель */}
-      <div className="panel">
+      <div style={{ flex: 1 }}>
         <h3>Выбранные элементы</h3>
         <input
-          className="input"
           placeholder="Фильтр"
           value={selectedFilter}
           onChange={(e) => setSelectedFilter(e.target.value)}
         />
-        <div className="list" onScroll={handleScrollSelected}>
+        <div
+          style={{ height: "500px", overflow: "auto", border: "1px solid black", marginTop: 10 }}
+          onScroll={handleScrollSelected}
+        >
           <DragDropContext onDragEnd={onDragEnd}>
             <Droppable droppableId="selected">
               {(provided) => (
@@ -131,7 +169,12 @@ export default function App() {
                           ref={provided.innerRef}
                           {...provided.draggableProps}
                           {...provided.dragHandleProps}
-                          className="list-item"
+                          style={{
+                            padding: 10,
+                            borderBottom: "1px solid #ccc",
+                            cursor: "pointer",
+                            ...provided.draggableProps.style,
+                          }}
                           onClick={() => handleUnselect(id)}
                         >
                           {id}
