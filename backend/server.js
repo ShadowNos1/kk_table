@@ -1,65 +1,74 @@
 import express from "express";
-import cors from "cors";
 import bodyParser from "body-parser";
+import cors from "cors";
 import path from "path";
 import { fileURLToPath } from "url";
 
 const app = express();
-const PORT = process.env.PORT || 4000;
+const PORT = 4000; // фиксированный порт
 
-// Для __dirname в ES-модулях
+// для работы с __dirname в ES-модулях
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+// middleware
 app.use(cors());
 app.use(bodyParser.json());
 
-// Пусть сборка React лежит в frontend/build
-app.use(express.static(path.join(__dirname, "frontend", "build")));
+// простая in-memory база для примера
+let items = Array.from({ length: 100000 }, (_, i) => ({ id: i + 1, name: `Item ${i + 1}` }));
+let selected = [];
 
-// Пример in-memory хранилища
-let allItems = Array.from({ length: 1000 }, (_, i) => ({ id: i + 1 }));
-let selectedItems = [];
+// отдаём фронтенд-статик
+const frontendBuildPath = path.join(__dirname, "../frontend/build");
+app.use(express.static(frontendBuildPath));
 
-// API для фронтенда
+// API: получить все элементы (с фильтром)
 app.get("/api/items", (req, res) => {
-  const { filter } = req.query;
-  let items = allItems.filter((i) => !selectedItems.find((s) => s.id === i.id));
-  if (filter) items = items.filter((i) => i.id.toString().includes(filter));
-  res.json(items);
+  const filter = req.query.filter ? req.query.filter.toLowerCase() : "";
+
+  const filteredItems = items
+    .filter(item => !selected.find(s => s.id === item.id))
+    .filter(item => item.name.toLowerCase().includes(filter));
+
+  res.json(filteredItems);
 });
 
+// API: получить выбранные элементы
 app.get("/api/selected", (req, res) => {
-  const { filter } = req.query;
-  let items = selectedItems;
-  if (filter) items = items.filter((i) => i.id.toString().includes(filter));
-  res.json(items);
+  res.json(selected);
 });
 
+// API: выбрать элемент
 app.post("/api/select", (req, res) => {
   const { id } = req.body;
-  const index = allItems.findIndex((i) => i.id === id);
-  if (index > -1) {
-    const [item] = allItems.splice(index, 1);
-    selectedItems.push(item);
+  const index = items.findIndex(item => item.id === id);
+  if (index !== -1) {
+    const [item] = items.splice(index, 1);
+    selected.push(item);
+    res.json({ success: true, item });
+  } else {
+    res.status(404).json({ success: false, message: "Item not found" });
   }
-  res.json(selectedItems);
 });
 
+// API: удалить выбранный элемент
 app.post("/api/unselect", (req, res) => {
   const { id } = req.body;
-  const index = selectedItems.findIndex((i) => i.id === id);
-  if (index > -1) {
-    const [item] = selectedItems.splice(index, 1);
-    allItems.push(item);
-    allItems.sort((a, b) => a.id - b.id); // держим порядок
+  const index = selected.findIndex(item => item.id === id);
+  if (index !== -1) {
+    const [item] = selected.splice(index, 1);
+    items.push(item);
+    items.sort((a, b) => a.id - b.id); // вернуть порядок
+    res.json({ success: true, item });
+  } else {
+    res.status(404).json({ success: false, message: "Selected item not found" });
   }
-  res.json(selectedItems);
 });
 
-// Любой другой маршрут отдаёт index.html (для React Router)
+// любые другие запросы возвращают index.html фронтенда
 app.get("*", (req, res) => {
-  res.sendFile(path.join(__dirname, "frontend", "build", "index.html"));
+  res.sendFile(path.join(frontendBuildPath, "index.html"));
 });
 
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
