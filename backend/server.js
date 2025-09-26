@@ -1,11 +1,6 @@
 import express from "express";
-import bodyParser from "body-parser";
 import cors from "cors";
-import path from "path";
-import { fileURLToPath } from "url";
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+import bodyParser from "body-parser";
 
 const app = express();
 const PORT = 4000;
@@ -13,54 +8,56 @@ const PORT = 4000;
 app.use(cors());
 app.use(bodyParser.json());
 
+// Генерируем миллион элементов при старте
 let allItems = Array.from({ length: 1000000 }, (_, i) => i + 1);
 let selectedItems = [];
 
-// --- API ---
 app.get("/api/items", (req, res) => {
-  const { filter = "", offset = 0, limit = 20 } = req.query;
-  const filtered = allItems
-    .filter((id) => !selectedItems.includes(id))
-    .filter((id) => id.toString().includes(filter))
-    .slice(Number(offset), Number(offset) + Number(limit));
-  res.json(filtered);
+  const filter = req.query.filter || "";
+  const offset = parseInt(req.query.offset) || 0;
+  const limit = parseInt(req.query.limit) || 20;
+
+  let items = allItems.filter((id) => id.toString().includes(filter));
+  res.json(items.slice(offset, offset + limit));
 });
 
 app.get("/api/selected", (req, res) => {
-  const { filter = "", offset = 0, limit = 20 } = req.query;
-  const filtered = selectedItems
-    .filter((id) => id.toString().includes(filter))
-    .slice(Number(offset), Number(offset) + Number(limit));
-  res.json(filtered);
+  const filter = req.query.filter || "";
+  const offset = parseInt(req.query.offset) || 0;
+  const limit = parseInt(req.query.limit) || 20;
+
+  let items = selectedItems.filter((id) => id.toString().includes(filter));
+  res.json(items.slice(offset, offset + limit));
 });
 
 app.post("/api/select", (req, res) => {
   const { id } = req.body;
-  const itemId = Number(id);
-  if (!selectedItems.includes(itemId)) selectedItems.push(itemId);
-  res.json({ success: true });
+  const index = allItems.indexOf(id);
+  if (index !== -1) {
+    allItems.splice(index, 1);
+    selectedItems.unshift(id);
+  }
+  res.sendStatus(200);
 });
 
 app.post("/api/unselect", (req, res) => {
   const { id } = req.body;
-  const itemId = Number(id);
-  selectedItems = selectedItems.filter((i) => i !== itemId);
-  res.json({ success: true });
+  const index = selectedItems.indexOf(id);
+  if (index !== -1) {
+    selectedItems.splice(index, 1);
+    allItems.unshift(id);
+  }
+  res.sendStatus(200);
 });
 
 app.post("/api/add", (req, res) => {
   const { id } = req.body;
-  const itemId = Number(id);
-  if (!allItems.includes(itemId) && !selectedItems.includes(itemId)) allItems.push(itemId);
-  res.json({ success: true });
+  if (!allItems.includes(id) && !selectedItems.includes(id)) {
+    allItems.unshift(id);
+  }
+  res.sendStatus(200);
 });
 
-// --- Serve React build ---
-app.use(express.static(path.join(__dirname, "../frontend/build")));
-
-// catch-all для React роутов
-app.get("*", (req, res) => {
-  res.sendFile(path.join(__dirname, "../frontend/build", "index.html"));
+app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
 });
-
-app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
