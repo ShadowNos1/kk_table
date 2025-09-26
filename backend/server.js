@@ -67,9 +67,11 @@ app.post("/api/unselect", (req, res) => {
 // Добавить новый элемент
 app.post("/api/add", (req, res) => {
   const { id } = req.body;
-  const num = parseInt(id);
-  if (!isNaN(num)) {} // для фронта просто добавляем в allItems логически
-  res.json({ ok: true });
+  if (allItems.includes(id) || selectedItems.includes(id)) {
+    return res.status(400).json({ error: "Элемент с таким ID уже существует" });
+  }
+  allItems.unshift(id); // добавляем в начало
+  res.json({ success: true, id });
 });
 
 // ======= Отдача фронтенда React =======
