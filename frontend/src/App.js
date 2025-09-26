@@ -1,144 +1,100 @@
-import React, { useEffect, useState, useRef } from "react";
+import React, { useEffect, useState } from "react";
 import axios from "axios";
-import { DragDropContext, Droppable, Draggable } from "react-beautiful-dnd"
+import { DragDropContext, Droppable, Draggable } from "react-beautiful-dnd";
 
-const API = "http://localhost:4000";
+const API_BASE = process.env.REACT_APP_API_URL || "";
 
 function App() {
-  const [allItems, setAllItems] = useState([]);
-  const [selectedItems, setSelectedItems] = useState([]);
-  const [offsetAll, setOffsetAll] = useState(0);
-  const [hasMoreAll, setHasMoreAll] = useState(true);
-  const [loadingAll, setLoadingAll] = useState(false);
-  const [searchAll, setSearchAll] = useState("");
-  const [searchSelected, setSearchSelected] = useState("");
-  const [newId, setNewId] = useState("");
-  const loaderAll = useRef(null);
+  const [items, setItems] = useState([]);
+  const [selected, setSelected] = useState([]);
+  const [filter, setFilter] = useState("");
+  const [selectedFilter, setSelectedFilter] = useState("");
+  const [offset, setOffset] = useState(0);
+  const [selOffset, setSelOffset] = useState(0);
+  const LIMIT = 20;
+
+  // загрузка элементов
+  const loadItems = async () => {
+    const res = await axios.get(`${API_BASE}/api/items`, {
+      params: { offset, limit: LIMIT, filter },
+    });
+    setItems(prev => [...prev, ...res.data]);
+    setOffset(prev => prev + res.data.length);
+  };
+
+  const loadSelected = async () => {
+    const res = await axios.get(`${API_BASE}/api/selected`, {
+      params: { offset: selOffset, limit: LIMIT, filter: selectedFilter },
+    });
+    setSelected(prev => [...prev, ...res.data]);
+    setSelOffset(prev => prev + res.data.length);
+  };
 
   useEffect(() => {
-    loadAllItems(true, searchAll);
-    loadSelectedItems();
-  }, []);
+    setItems([]);
+    setOffset(0);
+    loadItems();
+  }, [filter]);
 
   useEffect(() => {
-    const observer = new IntersectionObserver(
-      entries => {
-        if (entries[0].isIntersecting && hasMoreAll && !loadingAll) {
-          loadAllItems(false, searchAll);
-        }
-      },
-      { threshold: 1 }
-    );
-    if (loaderAll.current) observer.observe(loaderAll.current);
-    return () => observer.disconnect();
-  }, [loaderAll.current, hasMoreAll, searchAll, loadingAll]);
+    setSelected([]);
+    setSelOffset(0);
+    loadSelected();
+  }, [selectedFilter]);
 
-  const loadAllItems = async (reset = false, search = "") => {
-    if (loadingAll) return;
-    setLoadingAll(true);
-    try {
-      const res = await axios.get(`${API}/items`, {
-        params: { offset: reset ? 0 : offsetAll, limit: 20, search }
-      });
-      const existingIds = new Set([...selectedItems.map(i => i.id), ...allItems.map(i => i.id)]);
-      const newItems = res.data.filter(i => !existingIds.has(i.id));
-      const combined = reset ? newItems : [...allItems, ...newItems];
-      combined.sort((a, b) => a.id - b.id);
-      setAllItems(combined);
-      setOffsetAll(reset ? 20 : offsetAll + 20);
-      setHasMoreAll(res.data.length === 20);
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setLoadingAll(false);
-    }
+  const selectItem = async (item) => {
+    await axios.post(`${API_BASE}/api/select`, { id: item.id });
+    setItems(prev => prev.filter(i => i.id !== item.id));
+    setSelected(prev => [item, ...prev]);
   };
 
-  const loadSelectedItems = async () => {
-    const res = await axios.get(`${API}/selected`);
-    setSelectedItems(res.data);
+  const unselectItem = async (item) => {
+    await axios.post(`${API_BASE}/api/unselect`, { id: item.id });
+    setSelected(prev => prev.filter(i => i.id !== item.id));
+    setItems(prev => [item, ...prev]);
   };
 
-  const selectItem = async id => {
-    await axios.post(`${API}/select`, { id });
-    setAllItems(prev => prev.filter(item => item.id !== id));
-    loadSelectedItems();
-  };
-
-  const unselectItem = async id => {
-    await axios.post(`${API}/unselect`, { id });
-    setAllItems([]);
-    setOffsetAll(0);
-    setHasMoreAll(true);
-    loadAllItems(true, searchAll);
-    loadSelectedItems();
-  };
-
-  const onDragEnd = async result => {
+  const onDragEnd = async (result) => {
     if (!result.destination) return;
-    const items = Array.from(selectedItems);
-    const [reordered] = items.splice(result.source.index, 1);
-    items.splice(result.destination.index, 0, reordered);
-    setSelectedItems(items);
-    await axios.post(`${API}/reorder`, { ids: items.map(i => i.id) });
+    const reordered = Array.from(selected);
+    const [removed] = reordered.splice(result.source.index, 1);
+    reordered.splice(result.destination.index, 0, removed);
+    setSelected(reordered);
+    await axios.post(`${API_BASE}/api/reorder`, { selected: reordered.map(i => i.id) });
   };
-
-  const handleSearchAll = e => {
-    const value = e.target.value;
-    setSearchAll(value);
-    setOffsetAll(0);
-    setHasMoreAll(true);
-    setAllItems([]);
-    loadAllItems(true, value);
-  };
-
-  const handleAddNew = async () => {
-    const idNum = parseInt(newId);
-    if (!idNum) return alert("Введите корректный ID");
-    try {
-      const res = await axios.post(`${API}/add`, { id: idNum });
-      setAllItems(prev => [...prev, res.data].sort((a, b) => a.id - b.id));
-      setNewId("");
-    } catch (err) {
-      alert(err.response?.data?.message || "Ошибка добавления");
-    }
-  };
-
-  const filteredSelected = selectedItems.filter(el => el.id.toString().includes(searchSelected));
 
   return (
     <div style={{ display: "flex", gap: "20px", padding: "20px" }}>
-      <div style={{ flex: 1, border: "1px solid black", padding: "10px", height: "90vh", overflow: "auto" }}>
+      {/* Левый список */}
+      <div style={{ flex: 1, border: "1px solid #ccc", padding: "10px", height: "80vh", overflow: "auto" }}>
         <h3>Все элементы</h3>
-        <div style={{ marginBottom: "10px", display: "flex", gap: "5px" }}>
-          <input value={newId} onChange={e => setNewId(e.target.value)} placeholder="Новый ID" style={{ flex: 1, padding: "5px" }} />
-          <button onClick={handleAddNew} style={{ padding: "5px 10px" }}>Добавить</button>
-        </div>
-        <input value={searchAll} onChange={handleSearchAll} placeholder="Фильтр по ID" style={{ marginBottom: "10px", width: "100%", padding: "5px" }} />
-        {allItems.map(item => (
-          <div key={item.id} onClick={() => selectItem(item.id)} style={{ border: "1px solid gray", margin: "5px 0", padding: "5px", borderRadius: "4px", cursor: "pointer" }}>
+        <input placeholder="Фильтр" value={filter} onChange={e => setFilter(e.target.value)} />
+        {items.map(item => (
+          <div key={item.id} style={{ padding: "5px", borderBottom: "1px solid #eee", cursor: "pointer" }}
+               onClick={() => selectItem(item)}>
             ID: {item.id}
           </div>
         ))}
-        <div ref={loaderAll} />
+        <button onClick={loadItems}>Загрузить ещё</button>
       </div>
 
-      <div style={{ flex: 1, border: "1px solid black", padding: "10px", height: "90vh", overflow: "auto" }}>
-        <h3>Выбранные элементы</h3>
-        <input value={searchSelected} onChange={e => setSearchSelected(e.target.value)} placeholder="Фильтр по ID" style={{ marginBottom: "10px", width: "100%", padding: "5px" }} />
+      {/* Правый список */}
+      <div style={{ flex: 1, border: "1px solid #ccc", padding: "10px", height: "80vh", overflow: "auto" }}>
+        <h3>Выбранные</h3>
+        <input placeholder="Фильтр" value={selectedFilter} onChange={e => setSelectedFilter(e.target.value)} />
         <DragDropContext onDragEnd={onDragEnd}>
           <Droppable droppableId="selected">
-            {provided => (
-              <div {...provided.droppableProps} ref={provided.innerRef}>
-                {filteredSelected.map((item, index) => (
-                  <Draggable key={item.id} draggableId={String(item.id)} index={index}>
-                    {prov => (
+            {(provided) => (
+              <div ref={provided.innerRef} {...provided.droppableProps}>
+                {selected.map((item, index) => (
+                  <Draggable key={item.id} draggableId={item.id.toString()} index={index}>
+                    {(prov) => (
                       <div
                         ref={prov.innerRef}
                         {...prov.draggableProps}
                         {...prov.dragHandleProps}
-                        style={{ border: "1px solid gray", margin: "5px 0", padding: "5px", borderRadius: "4px", background: "#f0f0f0", cursor: "pointer", ...prov.draggableProps.style }}
-                        onClick={() => unselectItem(item.id)}
+                        style={{ padding: "5px", borderBottom: "1px solid #eee", cursor: "pointer", ...prov.draggableProps.style }}
+                        onClick={() => unselectItem(item)}
                       >
                         ID: {item.id}
                       </div>
@@ -150,6 +106,7 @@ function App() {
             )}
           </Droppable>
         </DragDropContext>
+        <button onClick={loadSelected}>Загрузить ещё</button>
       </div>
     </div>
   );
