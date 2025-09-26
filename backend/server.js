@@ -1,6 +1,10 @@
-const express = require("express");
-const path = require("path");
-const cors = require("cors");
+import express from "express";
+import path from "path";
+import { fileURLToPath } from "url";
+import cors from "cors";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const app = express();
 const PORT = 4000;
@@ -11,7 +15,7 @@ app.use(express.urlencoded({ extended: true }));
 
 // ======= Имитируем миллион элементов =======
 const TOTAL_ITEMS = 1000000;
-let selectedSet = new Set(); // для выбранных элементов
+let selectedSet = new Set();
 
 // Получение всех элементов с фильтром и пагинацией
 app.get("/api/items", (req, res) => {
@@ -20,22 +24,18 @@ app.get("/api/items", (req, res) => {
   limit = parseInt(limit);
 
   const items = [];
-  let count = 0;
   let id = 1 + offset;
-
   while (items.length < limit && id <= TOTAL_ITEMS) {
     if (!selectedSet.has(id) && id.toString().includes(filter)) {
       items.push(id);
     }
     id++;
-    count++;
-    if (count > TOTAL_ITEMS) break; // защита от бесконечного цикла
   }
 
   res.json(items);
 });
 
-// Получение выбранных элементов с фильтром
+// Получение выбранных элементов
 app.get("/api/selected", (req, res) => {
   let { filter = "", offset = 0, limit = 20 } = req.query;
   offset = parseInt(offset);
@@ -48,7 +48,7 @@ app.get("/api/selected", (req, res) => {
   res.json(selectedArray);
 });
 
-// Выбрать элемент
+// Выбор элемента
 app.post("/api/select", (req, res) => {
   const { id } = req.body;
   const num = parseInt(id);
@@ -68,7 +68,7 @@ app.post("/api/unselect", (req, res) => {
 app.post("/api/add", (req, res) => {
   const { id } = req.body;
   const num = parseInt(id);
-  if (!isNaN(num)) TOTAL_ITEMS++; // увеличиваем общее количество элементов
+  if (!isNaN(num)) {} // для фронта просто добавляем в allItems логически
   res.json({ ok: true });
 });
 
