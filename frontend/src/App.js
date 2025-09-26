@@ -4,6 +4,9 @@ import { DragDropContext, Droppable, Draggable } from "react-beautiful-dnd";
 
 const PAGE_SIZE = 20;
 
+// Для Render пустая строка, локально можно через переменную окружения
+const API_BASE = process.env.REACT_APP_API_URL || "";
+
 export default function App() {
   const [allItems, setAllItems] = useState([]);
   const [selectedItems, setSelectedItems] = useState([]);
@@ -18,46 +21,68 @@ export default function App() {
     if (loaderAll.current) return;
     loaderAll.current = true;
     const offset = reset ? 0 : allOffset;
-    const res = await axios.get("http://localhost:4000/api/items", {
-      params: { filter, offset, limit: PAGE_SIZE },
-    });
-    setAllItems((prev) => (reset ? res.data : [...prev, ...res.data]));
-    if (reset) setAllOffset(PAGE_SIZE); else setAllOffset(allOffset + PAGE_SIZE);
-    loaderAll.current = false;
+    try {
+      const res = await axios.get(`${API_BASE}/api/items`, {
+        params: { filter, offset, limit: PAGE_SIZE },
+      });
+      setAllItems((prev) => (reset ? res.data : [...prev, ...res.data]));
+      setAllOffset(reset ? PAGE_SIZE : allOffset + PAGE_SIZE);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      loaderAll.current = false;
+    }
   };
 
   const fetchSelected = async (reset = false) => {
     if (loaderSelected.current) return;
     loaderSelected.current = true;
     const offset = reset ? 0 : selectedOffset;
-    const res = await axios.get("http://localhost:4000/api/selected", {
-      params: { filter: selectedFilter, offset, limit: PAGE_SIZE },
-    });
-    setSelectedItems((prev) => (reset ? res.data : [...prev, ...res.data]));
-    if (reset) setSelectedOffset(PAGE_SIZE); else setSelectedOffset(selectedOffset + PAGE_SIZE);
-    loaderSelected.current = false;
+    try {
+      const res = await axios.get(`${API_BASE}/api/selected`, {
+        params: { filter: selectedFilter, offset, limit: PAGE_SIZE },
+      });
+      setSelectedItems((prev) => (reset ? res.data : [...prev, ...res.data]));
+      setSelectedOffset(reset ? PAGE_SIZE : selectedOffset + PAGE_SIZE);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      loaderSelected.current = false;
+    }
   };
 
   useEffect(() => { fetchItems(true); }, [filter]);
   useEffect(() => { fetchSelected(true); }, [selectedFilter]);
 
   const handleSelect = async (id) => {
-    await axios.post("http://localhost:4000/api/select", { id });
-    setAllItems(allItems.filter((i) => i !== id));
-    setSelectedItems([id, ...selectedItems]);
+    try {
+      await axios.post(`${API_BASE}/api/select`, { id });
+      setAllItems(allItems.filter((i) => i !== id));
+      setSelectedItems([id, ...selectedItems]);
+    } catch (err) {
+      console.error(err);
+    }
   };
 
   const handleUnselect = async (id) => {
-    await axios.post("http://localhost:4000/api/unselect", { id });
-    setSelectedItems(selectedItems.filter((i) => i !== id));
-    setAllItems([id, ...allItems]);
+    try {
+      await axios.post(`${API_BASE}/api/unselect`, { id });
+      setSelectedItems(selectedItems.filter((i) => i !== id));
+      setAllItems([id, ...allItems]);
+    } catch (err) {
+      console.error(err);
+    }
   };
 
   const handleAdd = async () => {
     const id = parseInt(prompt("Введите ID нового элемента:"));
     if (!id) return;
-    await axios.post("http://localhost:4000/api/add", { id });
-    setAllItems([id, ...allItems]);
+    try {
+      await axios.post(`${API_BASE}/api/add`, { id });
+      setAllItems([id, ...allItems]);
+    } catch (err) {
+      console.error(err);
+    }
   };
 
   const onDragEnd = (result) => {
