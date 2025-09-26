@@ -1,79 +1,86 @@
-import express from "express";
-import cors from "cors";
-import bodyParser from "body-parser";
-import path from "path";
+const express = require("express");
+const path = require("path");
+const cors = require("cors");
 
 const app = express();
 const PORT = 4000;
 
 app.use(cors());
-app.use(bodyParser.json());
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 
-// --- Виртуальный миллион элементов ---
-const TOTAL_ITEMS = 1_000_000;
-let selectedItems = [];
-const createItem = (id) => ({ id });
+// ======= Имитируем миллион элементов =======
+const TOTAL_ITEMS = 1000000;
+let selectedSet = new Set(); // для выбранных элементов
 
-// --- API ---
+// Получение всех элементов с фильтром и пагинацией
 app.get("/api/items", (req, res) => {
-  const filter = req.query.filter || "";
-  const offset = parseInt(req.query.offset) || 0;
-  const limit = parseInt(req.query.limit) || 20;
+  let { filter = "", offset = 0, limit = 20 } = req.query;
+  offset = parseInt(offset);
+  limit = parseInt(limit);
 
-  let items = [];
+  const items = [];
   let count = 0;
-  let id = 1;
+  let id = 1 + offset;
 
   while (items.length < limit && id <= TOTAL_ITEMS) {
-    if (!selectedItems.includes(id) && id.toString().includes(filter)) {
-      if (count >= offset) items.push(createItem(id));
-      count++;
+    if (!selectedSet.has(id) && id.toString().includes(filter)) {
+      items.push(id);
     }
     id++;
+    count++;
+    if (count > TOTAL_ITEMS) break; // защита от бесконечного цикла
   }
 
   res.json(items);
 });
 
+// Получение выбранных элементов с фильтром
 app.get("/api/selected", (req, res) => {
-  const filter = req.query.filter || "";
-  const offset = parseInt(req.query.offset) || 0;
-  const limit = parseInt(req.query.limit) || 20;
+  let { filter = "", offset = 0, limit = 20 } = req.query;
+  offset = parseInt(offset);
+  limit = parseInt(limit);
 
-  const filtered = selectedItems
+  const selectedArray = Array.from(selectedSet)
     .filter((id) => id.toString().includes(filter))
-    .slice(offset, offset + limit)
-    .map(createItem);
+    .slice(offset, offset + limit);
 
-  res.json(filtered);
+  res.json(selectedArray);
 });
 
+// Выбрать элемент
 app.post("/api/select", (req, res) => {
   const { id } = req.body;
-  if (!selectedItems.includes(id)) selectedItems.push(id);
-  res.json({ success: true });
+  const num = parseInt(id);
+  if (!isNaN(num)) selectedSet.add(num);
+  res.json({ ok: true });
 });
 
+// Убрать из выбранных
 app.post("/api/unselect", (req, res) => {
   const { id } = req.body;
-  selectedItems = selectedItems.filter((i) => i !== id);
-  res.json({ success: true });
+  const num = parseInt(id);
+  if (!isNaN(num)) selectedSet.delete(num);
+  res.json({ ok: true });
 });
 
+// Добавить новый элемент
 app.post("/api/add", (req, res) => {
   const { id } = req.body;
-  res.json({ success: true });
+  const num = parseInt(id);
+  if (!isNaN(num)) TOTAL_ITEMS++; // увеличиваем общее количество элементов
+  res.json({ ok: true });
 });
 
-// --- Статические файлы React ---
-const __dirname = path.resolve();
-app.use(express.static(path.join(__dirname, "frontend/build")));
+// ======= Отдача фронтенда React =======
+const frontendBuildPath = path.join(__dirname, "../frontend/build");
+app.use(express.static(frontendBuildPath));
 
-// --- Catch-all для SPA ---
 app.get("*", (req, res) => {
-  res.sendFile(path.join(__dirname, "frontend/build", "index.html"));
+  res.sendFile(path.join(frontendBuildPath, "index.html"));
 });
 
+// ======= Запуск сервера =======
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
