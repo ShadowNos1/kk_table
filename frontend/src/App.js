@@ -2,95 +2,107 @@ import React, { useState, useEffect } from "react";
 import axios from "axios";
 import { DragDropContext, Droppable, Draggable } from "react-beautiful-dnd";
 
-const API = "http://localhost:10000";
+const API = "http://localhost:4000";
 
 function App() {
-  const [allItems, setAllItems] = useState([]);        // все элементы
-  const [items, setItems] = useState([]);              // отображаемые в левом окне
-  const [allSelected, setAllSelected] = useState([]);  // все выбранные
-  const [selected, setSelected] = useState([]);        // отображаемые в правом окне
+  const [allItems, setAllItems] = useState([]);
+  const [items, setItems] = useState([]);
+  const [selected, setSelected] = useState([]);
   const [filter, setFilter] = useState("");
   const [selectedFilter, setSelectedFilter] = useState("");
   const [newId, setNewId] = useState("");
 
-  // Загрузка всех элементов
+  // Загрузка элементов с сервера
   useEffect(() => {
     const fetchData = async () => {
-      const res = await axios.get(`${API}/api/items`);
-      const resSelected = await axios.get(`${API}/api/selected`);
-      setAllItems(res.data);
-      setItems(res.data);
-      setAllSelected(resSelected.data);
-      setSelected(resSelected.data);
+      try {
+        const resItems = await axios.get(`${API}/api/items`);
+        const resSelected = await axios.get(`${API}/api/selected`);
+        setAllItems(resItems.data);
+        setSelected(resSelected.data);
+      } catch (err) {
+        console.error(err);
+      }
     };
     fetchData();
   }, []);
 
-  // Фильтр левого окна
+  // Левый список после фильтра и удаления выбранных
   useEffect(() => {
     const filtered = allItems
-      .filter(item => !allSelected.some(sel => sel.id === item.id))
+      .filter(item => !selected.find(sel => sel.id === item.id))
       .filter(item => item.id.toString().includes(filter))
       .sort((a, b) => a.id - b.id);
     setItems(filtered);
-  }, [filter, allItems, allSelected]);
+  }, [allItems, selected, filter]);
 
-  // Фильтр правого окна
-  useEffect(() => {
-    const filtered = allSelected
-      .filter(item => item.id.toString().includes(selectedFilter))
-      .sort((a, b) => a.id - b.id);
-    setSelected(filtered);
-  }, [selectedFilter, allSelected]);
+  // Правый список фильтрованный
+  const filteredSelected = selected
+    .filter(item => item.id.toString().includes(selectedFilter))
+    .sort((a, b) => a.id - b.id);
 
+  // Выбор элемента
   const selectItem = async (item) => {
-    await axios.post(`${API}/api/select`, { id: item.id });
-    setAllSelected(prev => [...prev, item]);
+    try {
+      await axios.post(`${API}/api/select`, { id: item.id });
+      setSelected(prev => [...prev, item]);
+    } catch (err) {
+      console.error(err);
+    }
   };
 
+  // Удаление из выбранных
   const unselectItem = async (item) => {
-    await axios.post(`${API}/api/unselect`, { id: item.id });
-    setAllSelected(prev => prev.filter(i => i.id !== item.id));
+    try {
+      await axios.post(`${API}/api/unselect`, { id: item.id });
+      setSelected(prev => prev.filter(i => i.id !== item.id));
+    } catch (err) {
+      console.error(err);
+    }
   };
 
+  // Добавление нового элемента
   const addNewItem = async () => {
     const id = parseInt(newId);
-    if (!id || allItems.some(i => i.id === id)) return;
+    if (!id || allItems.find(i => i.id === id)) return;
     const newItem = { id };
-    await axios.post(`${API}/api/add`, newItem);
-    setAllItems(prev => [...prev, newItem]);
-    setNewId("");
+    try {
+      await axios.post(`${API}/api/add`, newItem);
+      setAllItems(prev => [...prev, newItem]);
+      setNewId("");
+    } catch (err) {
+      console.error(err);
+    }
   };
 
+  // Drag and drop для выбранных
   const onDragEnd = (result) => {
     if (!result.destination) return;
-    const newSelected = Array.from(allSelected);
-    const [moved] = newSelected.splice(result.source.index, 1);
-    newSelected.splice(result.destination.index, 0, moved);
-    setAllSelected(newSelected);
+    const reordered = Array.from(selected);
+    const [removed] = reordered.splice(result.source.index, 1);
+    reordered.splice(result.destination.index, 0, removed);
+    setSelected(reordered);
   };
 
   return (
     <div style={{ display: "flex", gap: "20px", padding: "20px" }}>
-      {/* Левое окно */}
+      {/* Левый список */}
       <div style={{ flex: 1, border: "1px solid #ccc", padding: "10px", height: "80vh", overflowY: "auto" }}>
         <input
-          type="text"
           placeholder="Фильтр ID"
           value={filter}
           onChange={e => setFilter(e.target.value)}
+          style={{ width: "100%", marginBottom: "10px" }}
         />
-        <div>
-          {items.map(item => (
-            <div
-              key={item.id}
-              style={{ padding: "5px", border: "1px solid #aaa", margin: "5px 0", cursor: "pointer" }}
-              onClick={() => selectItem(item)}
-            >
-              ID: {item.id}
-            </div>
-          ))}
-        </div>
+        {items.map(item => (
+          <div
+            key={item.id}
+            style={{ padding: "5px", border: "1px solid #aaa", margin: "5px 0", cursor: "pointer" }}
+            onClick={() => selectItem(item)}
+          >
+            ID: {item.id}
+          </div>
+        ))}
         <div style={{ marginTop: "10px" }}>
           <input
             type="number"
@@ -102,31 +114,31 @@ function App() {
         </div>
       </div>
 
-      {/* Правое окно */}
+      {/* Правый список */}
       <div style={{ flex: 1, border: "1px solid #ccc", padding: "10px", height: "80vh", overflowY: "auto" }}>
         <input
-          type="text"
           placeholder="Фильтр выбранных"
           value={selectedFilter}
           onChange={e => setSelectedFilter(e.target.value)}
+          style={{ width: "100%", marginBottom: "10px" }}
         />
         <DragDropContext onDragEnd={onDragEnd}>
           <Droppable droppableId="selected">
             {(provided) => (
               <div ref={provided.innerRef} {...provided.droppableProps}>
-                {selected.map((item, index) => (
+                {filteredSelected.map((item, index) => (
                   <Draggable key={item.id} draggableId={item.id.toString()} index={index}>
-                    {(provided) => (
+                    {(prov) => (
                       <div
-                        ref={provided.innerRef}
-                        {...provided.draggableProps}
-                        {...provided.dragHandleProps}
+                        ref={prov.innerRef}
+                        {...prov.draggableProps}
+                        {...prov.dragHandleProps}
                         style={{
                           padding: "5px",
                           border: "1px solid #aaa",
                           margin: "5px 0",
                           cursor: "grab",
-                          ...provided.draggableProps.style
+                          ...prov.draggableProps.style
                         }}
                         onClick={() => unselectItem(item)}
                       >
