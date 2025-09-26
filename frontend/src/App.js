@@ -1,152 +1,153 @@
-import React, { useEffect, useState, useRef } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import axios from "axios";
 import { DragDropContext, Droppable, Draggable } from "react-beautiful-dnd";
 
-const API = "http://localhost:4000";
+const PAGE_SIZE = 20;
 
-function App() {
+export default function App() {
   const [allItems, setAllItems] = useState([]);
   const [selectedItems, setSelectedItems] = useState([]);
-  const [allFilter, setAllFilter] = useState("");
+  const [filter, setFilter] = useState("");
   const [selectedFilter, setSelectedFilter] = useState("");
-  const allStart = useRef(0);
-  const selectedStart = useRef(0);
-  const limit = 20;
+  const [allOffset, setAllOffset] = useState(0);
+  const [selectedOffset, setSelectedOffset] = useState(0);
+  const loaderAll = useRef(false);
+  const loaderSelected = useRef(false);
 
-  const loadAll = async () => {
-    const res = await axios.get(`${API}/items`, {
-      params: { start: allStart.current, limit, filter: allFilter },
+  const fetchItems = async (reset = false) => {
+    if (loaderAll.current) return;
+    loaderAll.current = true;
+    const offset = reset ? 0 : allOffset;
+    const res = await axios.get("http://localhost:4000/api/items", {
+      params: { filter, offset, limit: PAGE_SIZE },
     });
-    setAllItems((prev) => [...prev, ...res.data]);
-    allStart.current += res.data.length;
+    setAllItems((prev) => (reset ? res.data : [...prev, ...res.data]));
+    if (reset) setAllOffset(PAGE_SIZE); else setAllOffset(allOffset + PAGE_SIZE);
+    loaderAll.current = false;
   };
 
-  const loadSelected = async () => {
-    const res = await axios.get(`${API}/selected`, {
-      params: { start: selectedStart.current, limit, filter: selectedFilter },
+  const fetchSelected = async (reset = false) => {
+    if (loaderSelected.current) return;
+    loaderSelected.current = true;
+    const offset = reset ? 0 : selectedOffset;
+    const res = await axios.get("http://localhost:4000/api/selected", {
+      params: { filter: selectedFilter, offset, limit: PAGE_SIZE },
     });
-    setSelectedItems((prev) => [...prev, ...res.data]);
-    selectedStart.current += res.data.length;
+    setSelectedItems((prev) => (reset ? res.data : [...prev, ...res.data]));
+    if (reset) setSelectedOffset(PAGE_SIZE); else setSelectedOffset(selectedOffset + PAGE_SIZE);
+    loaderSelected.current = false;
   };
 
-  useEffect(() => {
-    allStart.current = 0;
-    setAllItems([]);
-    loadAll();
-  }, [allFilter]);
+  useEffect(() => { fetchItems(true); }, [filter]);
+  useEffect(() => { fetchSelected(true); }, [selectedFilter]);
 
-  useEffect(() => {
-    selectedStart.current = 0;
-    setSelectedItems([]);
-    loadSelected();
-  }, [selectedFilter]);
-
-  const selectItem = async (id) => {
-    await axios.post(`${API}/select`, { id });
-    setAllItems((prev) => prev.filter((x) => x !== id));
-    setSelectedItems((prev) => [...prev, id]);
+  const handleSelect = async (id) => {
+    await axios.post("http://localhost:4000/api/select", { id });
+    setAllItems(allItems.filter((i) => i !== id));
+    setSelectedItems([id, ...selectedItems]);
   };
 
-  const unselectItem = async (id) => {
-    await axios.post(`${API}/unselect`, { id });
-    setSelectedItems((prev) => prev.filter((x) => x !== id));
-    setAllItems((prev) => [...prev, id]);
+  const handleUnselect = async (id) => {
+    await axios.post("http://localhost:4000/api/unselect", { id });
+    setSelectedItems(selectedItems.filter((i) => i !== id));
+    setAllItems([id, ...allItems]);
   };
 
-  const addItem = async (id) => {
-    await axios.post(`${API}/add`, { id: parseInt(id) });
-    setAllItems((prev) => [...prev, parseInt(id)]);
+  const handleAdd = async () => {
+    const id = parseInt(prompt("Введите ID нового элемента:"));
+    if (!id) return;
+    await axios.post("http://localhost:4000/api/add", { id });
+    setAllItems([id, ...allItems]);
   };
 
-  const onDragEnd = async (result) => {
+  const onDragEnd = (result) => {
     if (!result.destination) return;
     const items = Array.from(selectedItems);
-    const [removed] = items.splice(result.source.index, 1);
-    items.splice(result.destination.index, 0, removed);
+    const [moved] = items.splice(result.source.index, 1);
+    items.splice(result.destination.index, 0, moved);
     setSelectedItems(items);
-    await axios.post(`${API}/reorder`, { items });
   };
 
-  const handleScroll = (e, listType) => {
-    const bottom = e.target.scrollHeight - e.target.scrollTop === e.target.clientHeight;
-    if (bottom) listType === "all" ? loadAll() : loadSelected();
+  const handleScrollAll = (e) => {
+    if (e.target.scrollTop + e.target.clientHeight >= e.target.scrollHeight - 5) {
+      fetchItems();
+    }
+  };
+
+  const handleScrollSelected = (e) => {
+    if (e.target.scrollTop + e.target.clientHeight >= e.target.scrollHeight - 5) {
+      fetchSelected();
+    }
   };
 
   return (
     <div style={{ display: "flex", gap: 20, padding: 20 }}>
-      <div
-        style={{ flex: 1, height: "90vh", overflowY: "auto" }}
-        onScroll={(e) => handleScroll(e, "all")}
-      >
+      <div style={{ flex: 1 }}>
+        <h3>Все элементы</h3>
         <input
-          placeholder="Фильтр по ID"
-          value={allFilter}
-          onChange={(e) => setAllFilter(e.target.value)}
+          placeholder="Фильтр"
+          value={filter}
+          onChange={(e) => setFilter(e.target.value)}
         />
-        {allItems.sort((a, b) => a - b).map((id) => (
-          <div
-            key={id}
-            onClick={() => selectItem(id)}
-            style={{
-              border: "1px solid #ccc",
-              padding: 10,
-              margin: 5,
-              cursor: "pointer",
-            }}
-          >
-            {id}
-          </div>
-        ))}
-        <div>
-          <input type="number" id="newId" placeholder="Новый ID" />
-          <button onClick={() => addItem(document.getElementById("newId").value)}>
-            Добавить
-          </button>
+        <button onClick={handleAdd}>Добавить</button>
+        <div
+          style={{ height: "500px", overflow: "auto", border: "1px solid black", marginTop: 10 }}
+          onScroll={handleScrollAll}
+        >
+          {allItems.map((id) => (
+            <div
+              key={id}
+              style={{ padding: 10, borderBottom: "1px solid #ccc", cursor: "pointer" }}
+              onClick={() => handleSelect(id)}
+            >
+              {id}
+            </div>
+          ))}
         </div>
       </div>
 
-      <div
-        style={{ flex: 1, height: "90vh", overflowY: "auto" }}
-        onScroll={(e) => handleScroll(e, "selected")}
-      >
+      <div style={{ flex: 1 }}>
+        <h3>Выбранные элементы</h3>
         <input
-          placeholder="Фильтр выбранных"
+          placeholder="Фильтр"
           value={selectedFilter}
           onChange={(e) => setSelectedFilter(e.target.value)}
         />
-        <DragDropContext onDragEnd={onDragEnd}>
-          <Droppable droppableId="selected">
-            {(provided) => (
-              <div {...provided.droppableProps} ref={provided.innerRef}>
-                {selectedItems.map((id, index) => (
-                  <Draggable key={id} draggableId={id.toString()} index={index}>
-                    {(prov) => (
-                      <div
-                        ref={prov.innerRef}
-                        {...prov.draggableProps}
-                        {...prov.dragHandleProps}
-                        onClick={() => unselectItem(id)}
-                        style={{
-                          border: "1px solid #ccc",
-                          padding: 10,
-                          margin: 5,
-                          cursor: "pointer",
-                          ...prov.draggableProps.style,
-                        }}
-                      >
-                        {id}
-                      </div>
-                    )}
-                  </Draggable>
-                ))}
-                {provided.placeholder}
-              </div>
-            )}
-          </Droppable>
-        </DragDropContext>
+        <div
+          style={{ height: "500px", overflow: "auto", border: "1px solid black", marginTop: 10 }}
+          onScroll={handleScrollSelected}
+        >
+          <DragDropContext onDragEnd={onDragEnd}>
+            <Droppable droppableId="selected">
+              {(provided) => (
+                <div ref={provided.innerRef} {...provided.droppableProps}>
+                  {selectedItems.map((id, index) => (
+                    <Draggable key={id} draggableId={id.toString()} index={index}>
+                      {(provided) => (
+                        <div
+                          ref={provided.innerRef}
+                          {...provided.draggableProps}
+                          {...provided.dragHandleProps}
+                          style={{
+                            padding: 10,
+                            borderBottom: "1px solid #ccc",
+                            cursor: "pointer",
+                            ...provided.draggableProps.style,
+                          }}
+                          onClick={() => handleUnselect(id)}
+                        >
+                          {id}
+                        </div>
+                      )}
+                    </Draggable>
+                  ))}
+                  {provided.placeholder}
+                </div>
+              )}
+            </Droppable>
+          </DragDropContext>
+        </div>
       </div>
     </div>
   );
 }
-
-export default App;
