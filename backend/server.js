@@ -1,65 +1,106 @@
 import express from "express";
 import cors from "cors";
 import bodyParser from "body-parser";
+import path from "path";
+import { fileURLToPath } from "url";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const app = express();
 app.use(cors());
 app.use(bodyParser.json());
 
-let items = Array.from({ length: 1000000 }, (_, i) => ({ id: i + 1 }));
-let selected = [];
+// ==== ДАННЫЕ В ПАМЯТИ ====
+let allItems = Array.from({ length: 1000000 }, (_, i) => ({ id: i + 1 }));
+let selectedItems = [];
+let addQueue = [];
 
-app.get("/items", (req, res) => {
-  let { offset = 0, limit = 20, search = "" } = req.query;
+// ==== ПОМОЩНИКИ ====
+function dedupeQueue(queue) {
+  return [...new Set(queue.map(item => item.id))].map(id => queue.find(i => i.id === id));
+}
+
+// ==== API ====
+
+// Получить элементы с фильтром и пагинацией
+app.get("/api/items", (req, res) => {
+  let { offset = 0, limit = 20, filter = "" } = req.query;
   offset = parseInt(offset);
   limit = parseInt(limit);
-  let filtered = items;
-  if (search) filtered = filtered.filter(el => el.id.toString().includes(search));
-  filtered.sort((a, b) => a.id - b.id);
+
+  let filtered = allItems.filter(item => !selectedItems.find(s => s.id === item.id));
+  if (filter) filtered = filtered.filter(item => item.id.toString().includes(filter));
+
   res.json(filtered.slice(offset, offset + limit));
 });
 
-app.get("/selected", (req, res) => res.json(selected));
+// Получить выбранные элементы
+app.get("/api/selected", (req, res) => {
+  let { offset = 0, limit = 20, filter = "" } = req.query;
+  offset = parseInt(offset);
+  limit = parseInt(limit);
 
-app.post("/select", (req, res) => {
+  let filtered = selectedItems;
+  if (filter) filtered = filtered.filter(item => item.id.toString().includes(filter));
+
+  res.json(filtered.slice(offset, offset + limit));
+});
+
+// Добавить новые элементы в очередь
+app.post("/api/items/add", (req, res) => {
+  const { items } = req.body; // [{id: 1000001}, ...]
+  if (items && Array.isArray(items)) {
+    addQueue.push(...items);
+    addQueue = dedupeQueue(addQueue);
+    res.json({ status: "queued" });
+  } else {
+    res.status(400).json({ error: "Invalid payload" });
+  }
+});
+
+// Выбрать элемент
+app.post("/api/select", (req, res) => {
   const { id } = req.body;
-  const index = items.findIndex(el => el.id === id);
+  const index = allItems.findIndex(i => i.id === id);
+  if (index !== -1 && !selectedItems.find(s => s.id === id)) {
+    const item = allItems.splice(index, 1)[0];
+    selectedItems.push(item);
+    res.json({ status: "ok" });
+  } else {
+    res.status(400).json({ error: "Item not found or already selected" });
+  }
+});
+
+// Убрать элемент из выбранных
+app.post("/api/unselect", (req, res) => {
+  const { id } = req.body;
+  const index = selectedItems.findIndex(i => i.id === id);
   if (index !== -1) {
-    selected.push(items[index]);
-    items.splice(index, 1);
+    const item = selectedItems.splice(index, 1)[0];
+    allItems.push(item); // возвращаем обратно
+    allItems.sort((a, b) => a.id - b.id);
+    res.json({ status: "ok" });
+  } else {
+    res.status(400).json({ error: "Item not found" });
   }
-  res.sendStatus(200);
 });
 
-app.post("/unselect", (req, res) => {
-  const { id } = req.body;
-  const index = selected.findIndex(el => el.id === id);
-  if (index !== -1) {
-    const item = selected[index];
-    selected.splice(index, 1);
-    const insertIndex = items.findIndex(el => el.id > id);
-    if (insertIndex === -1) items.push(item);
-    else items.splice(insertIndex, 0, item);
+// Батч добавления новых элементов раз в 10 секунд
+setInterval(() => {
+  if (addQueue.length > 0) {
+    allItems.push(...addQueue);
+    allItems.sort((a, b) => a.id - b.id);
+    addQueue = [];
   }
-  res.sendStatus(200);
+}, 10000);
+
+// ==== Обслуживание фронтенда ====
+app.use(express.static(path.join(__dirname, "../frontend/build")));
+app.get("*", (req, res) => {
+  res.sendFile(path.join(__dirname, "../frontend/build", "index.html"));
 });
 
-app.post("/reorder", (req, res) => {
-  const { ids } = req.body;
-  selected = ids.map(id => selected.find(el => el.id === id)).filter(Boolean);
-  res.sendStatus(200);
-});
-
-app.post("/add", (req, res) => {
-  const { id } = req.body;
-  if (items.some(el => el.id === id) || selected.some(el => el.id === id)) {
-    return res.status(400).json({ message: "Элемент с таким ID уже существует" });
-  }
-  const newItem = { id };
-  const insertIndex = items.findIndex(el => el.id > id);
-  if (insertIndex === -1) items.push(newItem);
-  else items.splice(insertIndex, 0, newItem);
-  res.json(newItem);
-});
-
-app.listen(4000, () => console.log("Backend запущен на http://localhost:4000"));
+// ==== СТАРТ СЕРВЕРА ====
+const PORT = process.env.PORT || 4000;
+app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
