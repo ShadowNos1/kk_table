@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import axios from "axios";
 import { DragDropContext, Droppable, Draggable } from "react-beautiful-dnd";
 
-const API = "http://localhost:4000";
+const API = "http://localhost:10000";
 
 function App() {
   const [allItems, setAllItems] = useState([]);        // все элементы
