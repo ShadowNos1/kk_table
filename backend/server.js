@@ -1,73 +1,92 @@
 import express from "express";
 import bodyParser from "body-parser";
 import cors from "cors";
+import path from "path";
+import { fileURLToPath } from "url";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const app = express();
-const PORT = 4000;
-
-app.use(cors());
 app.use(bodyParser.json());
+app.use(cors());
 
-// Генерируем 1 миллион элементов {id: 1..1000000}
-const TOTAL_ITEMS = 1000000;
-const allItems = Array.from({ length: TOTAL_ITEMS }, (_, i) => ({ id: i + 1 }));
+// Хранилище в памяти
+let allItems = Array.from({ length: 1000000 }, (_, i) => i + 1);
 let selectedItems = [];
 
-// GET /items?start=0&limit=20&filter=10
+// Очередь для дедупликации добавлений
+let addQueue = new Set();
+setInterval(() => {
+  if (addQueue.size) {
+    addQueue.forEach((id) => {
+      if (!allItems.includes(id) && !selectedItems.includes(id)) allItems.push(id);
+    });
+    addQueue.clear();
+  }
+}, 10000);
+
+// Получение элементов с фильтром и пагинацией
 app.get("/items", (req, res) => {
   let { start = 0, limit = 20, filter = "" } = req.query;
-  start = parseInt(start, 10);
-  limit = parseInt(limit, 10);
-  let items = allItems.filter((i) => !selectedItems.find((s) => s.id === i.id));
-  if (filter) items = items.filter((i) => String(i.id).includes(filter));
-  const page = items.slice(start, start + limit);
-  res.json(page);
+  start = parseInt(start);
+  limit = parseInt(limit);
+
+  let filtered = allItems.filter(
+    (id) => !selectedItems.includes(id) && id.toString().includes(filter)
+  );
+  filtered.sort((a, b) => a - b);
+  res.json(filtered.slice(start, start + limit));
 });
 
-// GET /selected?start=0&limit=20&filter=10
 app.get("/selected", (req, res) => {
   let { start = 0, limit = 20, filter = "" } = req.query;
-  start = parseInt(start, 10);
-  limit = parseInt(limit, 10);
-  let items = [...selectedItems];
-  if (filter) items = items.filter((i) => String(i.id).includes(filter));
-  const page = items.slice(start, start + limit);
-  res.json(page);
+  start = parseInt(start);
+  limit = parseInt(limit);
+
+  let filtered = selectedItems.filter((id) => id.toString().includes(filter));
+  res.json(filtered.slice(start, start + limit));
 });
 
-// POST /select {id: 123}
+// Выбрать элемент
 app.post("/select", (req, res) => {
   const { id } = req.body;
-  const idx = allItems.findIndex((i) => i.id === id);
-  if (idx !== -1 && !selectedItems.find((s) => s.id === id)) {
-    selectedItems.unshift(allItems[idx]);
+  if (!selectedItems.includes(id)) {
+    selectedItems.push(id);
+    allItems = allItems.filter((x) => x !== id);
   }
-  res.sendStatus(200);
+  res.json({ ok: true });
 });
 
-// POST /unselect {id: 123}
+// Убрать из выбранных
 app.post("/unselect", (req, res) => {
   const { id } = req.body;
-  selectedItems = selectedItems.filter((i) => i.id !== id);
-  res.sendStatus(200);
+  if (selectedItems.includes(id)) {
+    selectedItems = selectedItems.filter((x) => x !== id);
+    allItems.push(id);
+  }
+  res.json({ ok: true });
 });
 
-// POST /add {id: 12345}
+// Добавить новый элемент
 app.post("/add", (req, res) => {
   const { id } = req.body;
-  if (!allItems.find((i) => i.id === id)) {
-    allItems.unshift({ id });
-  }
-  res.sendStatus(200);
+  addQueue.add(id);
+  res.json({ ok: true });
 });
 
-// POST /reorder {ids: [..]}
+// Перестановка выбранных элементов
 app.post("/reorder", (req, res) => {
-  const { ids } = req.body;
-  selectedItems.sort((a, b) => ids.indexOf(a.id) - ids.indexOf(b.id));
-  res.sendStatus(200);
+  const { items } = req.body;
+  selectedItems = items;
+  res.json({ ok: true });
 });
 
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+// Раздача фронтенда
+app.use(express.static(path.join(__dirname, "frontend/build")));
+app.get("*", (req, res) => {
+  res.sendFile(path.join(__dirname, "frontend/build", "index.html"));
 });
+
+const PORT = 4000;
+app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
