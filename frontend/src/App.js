@@ -3,8 +3,6 @@ import axios from "axios";
 import { DragDropContext, Droppable, Draggable } from "react-beautiful-dnd";
 
 const PAGE_SIZE = 20;
-
-// Для Render пустая строка, локально можно через переменную окружения
 const API_BASE = process.env.REACT_APP_API_URL || "";
 
 export default function App() {
@@ -85,6 +83,11 @@ export default function App() {
     }
   };
 
+  const handleReset = () => {
+    setFilter("");
+    fetchItems(true);
+  };
+
   const onDragEnd = (result) => {
     if (!result.destination) return;
     const items = Array.from(selectedItems);
@@ -109,14 +112,17 @@ export default function App() {
     <div style={{ display: "flex", gap: 20, padding: 20 }}>
       <div style={{ flex: 1 }}>
         <h3>Все элементы</h3>
-        <input
-          placeholder="Фильтр"
-          value={filter}
-          onChange={(e) => setFilter(e.target.value)}
-        />
-        <button onClick={handleAdd}>Добавить</button>
+        <div style={{ display: "flex", gap: 10, marginBottom: 10 }}>
+          <input
+            placeholder="Фильтр"
+            value={filter}
+            onChange={(e) => setFilter(e.target.value)}
+          />
+          <button onClick={handleAdd}>Добавить</button>
+          <button onClick={handleReset}>Сбросить список</button>
+        </div>
         <div
-          style={{ height: "500px", overflow: "auto", border: "1px solid black", marginTop: 10 }}
+          style={{ height: "500px", overflow: "auto", border: "1px solid black" }}
           onScroll={handleScrollAll}
         >
           {allItems.map((id) => (
