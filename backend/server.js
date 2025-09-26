@@ -8,85 +8,70 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
-app.use(bodyParser.json());
-app.use(cors());
+const PORT = process.env.PORT || 4000;
 
-// Хранилище в памяти
+app.use(cors());
+app.use(bodyParser.json());
+
+// --- in-memory storage ---
 let allItems = Array.from({ length: 1000000 }, (_, i) => i + 1);
 let selectedItems = [];
 
-// Очередь для дедупликации добавлений
-let addQueue = new Set();
-setInterval(() => {
-  if (addQueue.size) {
-    addQueue.forEach((id) => {
-      if (!allItems.includes(id) && !selectedItems.includes(id)) allItems.push(id);
-    });
-    addQueue.clear();
-  }
-}, 10000);
+// --- Serve React build ---
+app.use(express.static(path.join(__dirname, "../frontend/build")));
 
-// Получение элементов с фильтром и пагинацией
-app.get("/items", (req, res) => {
-  let { start = 0, limit = 20, filter = "" } = req.query;
-  start = parseInt(start);
-  limit = parseInt(limit);
-
-  let filtered = allItems.filter(
-    (id) => !selectedItems.includes(id) && id.toString().includes(filter)
-  );
-  filtered.sort((a, b) => a - b);
-  res.json(filtered.slice(start, start + limit));
+// --- API: get all items with optional filter ---
+app.get("/api/items", (req, res) => {
+  const { filter = "", offset = 0, limit = 20 } = req.query;
+  const filtered = allItems
+    .filter((id) => !selectedItems.includes(id))
+    .filter((id) => id.toString().includes(filter))
+    .slice(Number(offset), Number(offset) + Number(limit));
+  res.json(filtered);
 });
 
-app.get("/selected", (req, res) => {
-  let { start = 0, limit = 20, filter = "" } = req.query;
-  start = parseInt(start);
-  limit = parseInt(limit);
-
-  let filtered = selectedItems.filter((id) => id.toString().includes(filter));
-  res.json(filtered.slice(start, start + limit));
+// --- API: get selected items with optional filter ---
+app.get("/api/selected", (req, res) => {
+  const { filter = "", offset = 0, limit = 20 } = req.query;
+  const filtered = selectedItems
+    .filter((id) => id.toString().includes(filter))
+    .slice(Number(offset), Number(offset) + Number(limit));
+  res.json(filtered);
 });
 
-// Выбрать элемент
-app.post("/select", (req, res) => {
+// --- API: select an item ---
+app.post("/api/select", (req, res) => {
   const { id } = req.body;
-  if (!selectedItems.includes(id)) {
-    selectedItems.push(id);
-    allItems = allItems.filter((x) => x !== id);
+  const itemId = Number(id);
+  if (!selectedItems.includes(itemId)) {
+    selectedItems.push(itemId);
   }
-  res.json({ ok: true });
+  res.json({ success: true });
 });
 
-// Убрать из выбранных
-app.post("/unselect", (req, res) => {
+// --- API: unselect an item ---
+app.post("/api/unselect", (req, res) => {
   const { id } = req.body;
-  if (selectedItems.includes(id)) {
-    selectedItems = selectedItems.filter((x) => x !== id);
-    allItems.push(id);
+  const itemId = Number(id);
+  selectedItems = selectedItems.filter((i) => i !== itemId);
+  res.json({ success: true });
+});
+
+// --- API: add a new item ---
+app.post("/api/add", (req, res) => {
+  const { id } = req.body;
+  const itemId = Number(id);
+  if (!allItems.includes(itemId) && !selectedItems.includes(itemId)) {
+    allItems.push(itemId);
   }
-  res.json({ ok: true });
+  res.json({ success: true });
 });
 
-// Добавить новый элемент
-app.post("/add", (req, res) => {
-  const { id } = req.body;
-  addQueue.add(id);
-  res.json({ ok: true });
-});
-
-// Перестановка выбранных элементов
-app.post("/reorder", (req, res) => {
-  const { items } = req.body;
-  selectedItems = items;
-  res.json({ ok: true });
-});
-
-// Раздача фронтенда
-app.use(express.static(path.join(__dirname, "frontend/build")));
+// --- Catch-all to serve React ---
 app.get("*", (req, res) => {
-  res.sendFile(path.join(__dirname, "frontend/build", "index.html"));
+  res.sendFile(path.join(__dirname, "../frontend/build", "index.html"));
 });
 
-const PORT = 4000;
-app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
+});
