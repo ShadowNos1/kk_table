@@ -1,74 +1,74 @@
 import express from "express";
-import bodyParser from "body-parser";
 import cors from "cors";
-import path from "path";
-import { fileURLToPath } from "url";
+import bodyParser from "body-parser";
 
 const app = express();
-const PORT = 4000; // фиксированный порт
+const PORT = 4000;
 
-// для работы с __dirname в ES-модулях
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-// middleware
 app.use(cors());
 app.use(bodyParser.json());
 
-// простая in-memory база для примера
-let items = Array.from({ length: 100000 }, (_, i) => ({ id: i + 1, name: `Item ${i + 1}` }));
-let selected = [];
+// Данные в памяти
+let allItems = [];
+for (let i = 1; i <= 100; i++) {
+  allItems.push(i);
+}
 
-// отдаём фронтенд-статик
-const frontendBuildPath = path.join(__dirname, "../frontend/build");
-app.use(express.static(frontendBuildPath));
+let selectedItems = [];
 
-// API: получить все элементы (с фильтром)
+// Корень просто для проверки
+app.get("/", (req, res) => {
+  res.send("API running");
+});
+
+// Получить все элементы (не выбранные)
 app.get("/api/items", (req, res) => {
-  const filter = req.query.filter ? req.query.filter.toLowerCase() : "";
-
-  const filteredItems = items
-    .filter(item => !selected.find(s => s.id === item.id))
-    .filter(item => item.name.toLowerCase().includes(filter));
-
-  res.json(filteredItems);
+  const { filter } = req.query;
+  let filtered = allItems.filter((id) => !selectedItems.includes(id));
+  if (filter) {
+    filtered = filtered.filter((id) => id.toString().includes(filter));
+  }
+  res.json(filtered);
 });
 
-// API: получить выбранные элементы
+// Получить выбранные элементы
 app.get("/api/selected", (req, res) => {
-  res.json(selected);
+  const { filter } = req.query;
+  let filtered = selectedItems.slice();
+  if (filter) {
+    filtered = filtered.filter((id) => id.toString().includes(filter));
+  }
+  res.json(filtered);
 });
 
-// API: выбрать элемент
+// Выбрать элемент
 app.post("/api/select", (req, res) => {
   const { id } = req.body;
-  const index = items.findIndex(item => item.id === id);
-  if (index !== -1) {
-    const [item] = items.splice(index, 1);
-    selected.push(item);
-    res.json({ success: true, item });
-  } else {
-    res.status(404).json({ success: false, message: "Item not found" });
+  const numId = Number(id);
+  if (!selectedItems.includes(numId) && allItems.includes(numId)) {
+    selectedItems.push(numId);
   }
+  res.json({ success: true });
 });
 
-// API: удалить выбранный элемент
+// Убрать элемент из выбранных
 app.post("/api/unselect", (req, res) => {
   const { id } = req.body;
-  const index = selected.findIndex(item => item.id === id);
-  if (index !== -1) {
-    const [item] = selected.splice(index, 1);
-    items.push(item);
-    items.sort((a, b) => a.id - b.id); // вернуть порядок
-    res.json({ success: true, item });
-  } else {
-    res.status(404).json({ success: false, message: "Selected item not found" });
+  const numId = Number(id);
+  selectedItems = selectedItems.filter((i) => i !== numId);
+  res.json({ success: true });
+});
+
+// Добавить новый элемент
+app.post("/api/add", (req, res) => {
+  const { id } = req.body;
+  const numId = Number(id);
+  if (!allItems.includes(numId) && !selectedItems.includes(numId)) {
+    allItems.push(numId);
   }
+  res.json({ success: true });
 });
 
-// любые другие запросы возвращают index.html фронтенда
-app.get("*", (req, res) => {
-  res.sendFile(path.join(frontendBuildPath, "index.html"));
+app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
 });
-
-app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
